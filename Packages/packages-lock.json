@@ -8,9 +8,9 @@
       "url": "https://packages.unity.com"
     },
     "com.lukestilson.openvat": {
-      "version": "file:openvat-unity",
+      "version": "file:../openvat-unity",
       "depth": 0,
-      "source": "embedded",
+      "source": "local",
       "dependencies": {}
     },
     "com.unity.ai.navigation": {
