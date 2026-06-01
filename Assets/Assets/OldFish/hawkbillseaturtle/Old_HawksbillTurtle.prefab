@@ -996,7 +996,7 @@ GameObject:
   - component: {fileID: 1203260165538456525}
   - component: {fileID: 266143426251478063}
   m_Layer: 6
-  m_Name: Mar (Hawksbill) 1.4
+  m_Name: Old_HawksbillTurtle
   m_TagString: hawkbill
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

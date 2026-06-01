@@ -355,7 +355,6 @@ namespace DCR2
                     math.length(existing.c2.xyz));
 
 
-
                 float3 couzinDirection = float3.zero;
                 float3 preferredDirection;
 
