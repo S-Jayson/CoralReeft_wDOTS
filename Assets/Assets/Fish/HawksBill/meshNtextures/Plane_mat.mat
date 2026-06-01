@@ -1,5 +1,18 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!114 &-8260207412739616131
+MonoBehaviour:
+  m_ObjectHideFlags: 11
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0353a89b1f911e48b9e16bdc9f2e058, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Editor::UnityEditor.Rendering.Universal.AssetVersion
+  version: 10
 --- !u!21 &2100000
 Material:
   serializedVersion: 8
@@ -29,7 +42,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Basecolor:
-        m_Texture: {fileID: 2800000, guid: e517cec9bd0a2cd40a9d8c265ed2b6a4, type: 3}
+        m_Texture: {fileID: 2800000, guid: cb268d0ad681cbc42a87663bbca705b8, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Emission:
@@ -41,7 +54,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Normal:
-        m_Texture: {fileID: 0}
+        m_Texture: {fileID: 2800000, guid: 42fefd0e6bf221a4085ebf6e6cc4cd40, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _Roughness:
@@ -49,11 +62,11 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _openVAT_main:
-        m_Texture: {fileID: 2800000, guid: 3417c374b128897409b7c547549938d6, type: 3}
+        m_Texture: {fileID: 2800000, guid: 1da6b7fd487e73640b331975ecf6e0c2, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _openVAT_nrml:
-        m_Texture: {fileID: 2800000, guid: 1579b6bb15be7e84a80f59b8bc5e5af3, type: 3}
+        m_Texture: {fileID: 2800000, guid: 41e9d8dabed4f914c96de4adebf09f48, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - unity_Lightmaps:
@@ -74,7 +87,7 @@ Material:
     - _QueueOffset: 0
     - _UsePackedNormals: 0
     - _UseTime: 1
-    - _exaggeration: 0
+    - _exaggeration: -0.5
     - _frame: 0
     - _frames: 30
     - _resolutionY: 30
@@ -84,16 +97,3 @@ Material:
     - _minValues: {r: -0.1, g: -0.1, b: -0.1, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
---- !u!114 &3011177485666878334
-MonoBehaviour:
-  m_ObjectHideFlags: 11
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d0353a89b1f911e48b9e16bdc9f2e058, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Editor::UnityEditor.Rendering.Universal.AssetVersion
-  version: 10
