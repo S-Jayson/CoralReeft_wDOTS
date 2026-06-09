@@ -242,7 +242,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2cca9b2673c89944b83ae336ebf4526f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DCR2.SchoolSpawnAuthoring
-  schoolPrefab: {fileID: 8982848056286234505, guid: 148dd58ad65c381479df03d99e96a9ff, type: 3}
+  schoolPrefab: {fileID: 1768099187565557223, guid: aa0b0c0252dcc7e4a96a55bd4974a880, type: 3}
   spawnRadius: 1
   spawnCount: 5
   spawnType: 0
