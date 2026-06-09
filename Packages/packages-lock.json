@@ -8,7 +8,7 @@
       "url": "https://packages.unity.com"
     },
     "com.lukestilson.openvat": {
-      "version": "file:../openvat-unity",
+      "version": "file:../Assets/openvat-unity/openvat-unity",
       "depth": 0,
       "source": "local",
       "dependencies": {}

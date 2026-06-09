@@ -4,17 +4,6 @@ using Unity.Transforms;
 using UnityEngine;
 
 
-// =============================================================================
-// Changes:
-//   1. Added VAT animation fields phaseOffset range, playback speed range
-//   2. Baker now also adds VATPhaseOffset and VATPlaybackSpeed components
-//   3. Phase and speed are randomized per-entity at spawn time. Randomization
-//      happens in the spawn systems. Here we just set defaults.
-// TODO:: 1. Make the schoolID generation automatic when creating a new school
-//        2. Actually implement the VAT animation in the shader and the system
-// =============================================================================
-
-
 namespace DCR2
 {
     public class FishAuthoring : MonoBehaviour
@@ -38,9 +27,6 @@ namespace DCR2
         public int maxCentroidDistance;
         public float alpha;
         public float rho;
-
-        [Header("VAT Animation Defaults")]
-        public float vatPlaybackSpeed = 1.0f;
 
         class Baker : Baker<FishAuthoring>
         {
@@ -74,16 +60,6 @@ namespace DCR2
                 //Adds the Fish component to this entity
                 AddComponent(entity, new Fish{
                     currentSpeed = authoring.normalSpeed
-                });
-
-                AddComponent(entity, new VATPhaseOffset
-                {
-                    Value = 0f
-                });
-
-                AddComponent(entity, new VATPlaybackSpeed
-                {
-                    Value = authoring.vatPlaybackSpeed
                 });
             }
         }
