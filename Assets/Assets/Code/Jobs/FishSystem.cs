@@ -60,7 +60,6 @@ namespace DCR2
                 float acceleration = fishSettings.acceleration;
                 float rotationSpeed = fishSettings.rotationSpeed;
 
-
                 //Create an array that contains each entity in this school
                 NativeArray<Entity> fishEntities = fishQuery.ToEntityArray(Allocator.TempJob); 
 
@@ -247,6 +246,8 @@ namespace DCR2
                 {
                     for (int i = 0; i < fishCount; i++)
                     {
+                        //Debug.Log("The rho is: {rho}");
+
                         //Debug.LogFormat("Amount of fish it checks in Couzin Function: {0}", fishCount);
                         if (i != curFishIndex)
                         {
@@ -366,6 +367,7 @@ namespace DCR2
                 else if (couzinDirections[curFishIndex].Allignment.Equals(float3.zero) != true)
                 {
                     couzinDirection = couzinDirections[curFishIndex].Allignment;
+                    Debug.Log("The rho is: {rho}");
                 }
                 
 

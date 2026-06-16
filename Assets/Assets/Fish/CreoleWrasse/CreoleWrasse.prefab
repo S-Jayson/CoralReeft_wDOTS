@@ -58,7 +58,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
+  m_RayTracingMode: 0
   m_RayTraceProcedural: 0
   m_RayTracingAccelStructBuildFlagsOverride: 0
   m_RayTracingAccelStructBuildFlags: 1
@@ -108,13 +108,12 @@ MonoBehaviour:
   normalSpeed: 0.03
   acceleration: 1
   rotationSpeed: 1
-  couzinDirectionWeight: 1
-  centroidFollowingDirectionWeight: 4
-  minCentroidDistance: 3
-  maxCentroidDistance: 10
+  couzinDirectionWeight: 6
+  centroidFollowingDirectionWeight: 8
+  minCentroidDistance: 2
+  maxCentroidDistance: 3
   alpha: 6
-  rho: 10
-  vatPlaybackSpeed: 1
+  rho: 2
 --- !u!1001 &1547564449765171865
 PrefabInstance:
   m_ObjectHideFlags: 0

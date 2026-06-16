@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 2711757417932382194}
   - component: {fileID: 8991542391509162359}
   m_Layer: 0
-  m_Name: Hawksbill_Turtle
+  m_Name: HawksBill_Turtle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -58,7 +58,7 @@ MeshRenderer:
   m_MotionVectors: 1
   m_LightProbeUsage: 1
   m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
+  m_RayTracingMode: 0
   m_RayTraceProcedural: 0
   m_RayTracingAccelStructBuildFlagsOverride: 0
   m_RayTracingAccelStructBuildFlags: 1
@@ -114,7 +114,6 @@ MonoBehaviour:
   maxCentroidDistance: 10
   alpha: 6
   rho: 10
-  vatPlaybackSpeed: 1
 --- !u!1001 &5127649586206871797
 PrefabInstance:
   m_ObjectHideFlags: 0
