@@ -1,0 +1,560 @@
+using Unity.Collections;
+using Unity.Entities;
+using Unity.Jobs;
+using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
+using Unity.Transforms;
+using UnityEngine;
+
+
+//Note :: You can use Debug.Log() if you disable the job's [BurstCompile]
+
+//1. Replace Vector3 with float3
+//  float3 is what is used for the LocalToWorld component, so if I were to use Vector3 then I'd have to constantly typecast it to Vector3 and back into LocalToWorld
+//  float3 is better for fast ECS calculation
+//  This means I cant use some of the things Vector3 has like magnitude or normalize
+//  instead I use math.length() and math.normalize()
+//
+namespace DCR2
+{
+    [RequireMatchingQueriesForUpdate]
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
+    [UpdateBefore(typeof(TransformSystemGroup))]
+
+    public partial struct FishSystem : ISystem
+    {
+        // vars
+        EntityQuery schoolQuery;
+        int schoolCount;
+        NativeArray<Entity> schoolArray;
+        // public bool schoolInstatiated = false;
+        
+        
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            //schoolQuery = SystemAPI.QueryBuilder().WithAll<SchoolSpawn>().Build();
+            schoolCount = 0;
+        }
+
+        public void OnUpdate(ref SystemState state)
+        {
+            //Note:: I was having a problem where the GetAllUniqueComponents function was telling me that it didnt find any entities with SemiStaticSchool component and that I couoldnt fiter with multiple shared components, which no longer appeared when I added the SemiStaticSchool component in the EntityQuery, but I'm not sure why that happened...
+            var fishQuery = SystemAPI.QueryBuilder().WithAll<SemiStaticSchool>().WithAll<Fish>().WithAll<DynamicSchool>().WithAllRW<LocalToWorld>().Build();
+            float dt = math.min(0.05f, SystemAPI.Time.DeltaTime);
+            //Debug.Log(FixedString.Format("Fish count: {0}", fishQuery.CalculateEntityCount()));
+            var world = state.WorldUnmanaged;
+
+            // creating query of schools to use for array of centroids
+            if (schoolCount == 0)
+            {
+                schoolQuery = SystemAPI.QueryBuilder().WithAll<SchoolSpawn>().Build();
+                schoolCount = schoolQuery.CalculateEntityCount();
+                schoolArray = schoolQuery.ToEntityArray(Allocator.Temp);
+            }
+            
+
+            
+            state.EntityManager.GetAllUniqueSharedComponents(out NativeList<SemiStaticSchool> uniqueFishComponents, world.UpdateAllocator.ToAllocator);
+            foreach (var fishSettings in uniqueFishComponents)
+            {
+                fishQuery.AddSharedComponentFilter(fishSettings);
+                
+
+                var fishCount = fishQuery.CalculateEntityCount();
+                //Default value in shared component filter
+                if (fishCount == 0)
+                {
+                    fishQuery.ResetFilter();
+                    continue;
+                }
+
+                var fishChunkBaseEntityIndexArray = fishQuery.CalculateBaseEntityIndexArrayAsync(
+                world.UpdateAllocator.ToAllocator, state.Dependency,
+                out var fishChunkBaseIndexJobHandle);
+                
+                //Get weights and alpha from the semi-static component
+                float couzinDirectionWeight = fishSettings.couzinDirectionWeight;
+                float centroidFollowingDirectionWeight = fishSettings.centroidFollowingDirectionWeight;
+                int minCentroidDistance = fishSettings.minCentroidDistance;
+                int maxCentroidDistance = fishSettings.maxCentroidDistance;
+                float alpha = fishSettings.alpha;
+                float rho = fishSettings.rho;
+                float normalSpeed = fishSettings.normalSpeed;
+                float acceleration = fishSettings.acceleration;
+                float rotationSpeed = fishSettings.rotationSpeed;
+                int schoolID = fishSettings.schoolID;
+
+
+                //Create an array that contains each entity in this school
+                NativeArray<Entity> fishEntities = fishQuery.ToEntityArray(Allocator.TempJob); 
+
+                //Get a list of components of type LocalToWorld (positions and angle of entities), one can lookup a specific component by entity 
+                //  ex: fishPositions[entity]
+                //ComponentLookup<LocalToWorld> fishPositions = GetComponentLookup<LocalToWorld>(isReadOnly = true);
+
+                //Create arrays where you're going to store the results from jobs
+                var couzinDirections = CollectionHelper.CreateNativeArray<CouzinValues, RewindableAllocator>(fishCount, ref world.UpdateAllocator);
+                var centroidFollowingDirections = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(fishCount, ref world.UpdateAllocator);
+                //var newCentroid = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(1, ref world.UpdateAllocator);
+                //newCentroid[0] = float3.zero;
+                //float3 newCentroid = float3.zero;\\
+                
+                // array to keep count of how many fish are in each school
+                var fishCountPerSchool = CollectionHelper.CreateNativeArray<int, RewindableAllocator>(schoolCount, ref world.UpdateAllocator);
+                // creating array of centroids
+                var newCentroid = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(schoolCount, ref world.UpdateAllocator);
+                for (int i = 0; i < schoolCount; i++)
+                {
+                    // initialize each centroid to 0 (and each schoolCount to 0 also, to reuse the same loop)
+                    newCentroid[i] = float3.zero;
+                    fishCountPerSchool[i] = 0;
+                }
+                
+
+                
+                //Is it alright to name the variables same?
+                var calculateCentroidJob = new CalculateCentroidJob
+                {
+                    newCentroid = newCentroid,
+                    schoolID = schoolID,
+                    fishCountPerSchool = fishCountPerSchool,
+                    
+                };
+                var calculateCentroidJobHandle = calculateCentroidJob.Schedule(fishQuery, fishChunkBaseIndexJobHandle);
+
+                var calculateCentroidMeanJob = new CalculateCentroidMeanJob
+                {
+                    newCentroid = newCentroid,
+                    fishCount = fishCount,
+                    schoolID = schoolID,
+                    fishCountPerSchool = fishCountPerSchool,
+                };
+                var calculateCentroidMeanJobHandle = calculateCentroidMeanJob.Schedule(calculateCentroidJobHandle);
+
+                var getCentroidFollowingDirectionJob = new GetCentroidFollowingDirectionJob
+                {
+                    chunkBaseEntityIndices = fishChunkBaseEntityIndexArray,
+                    centroidFollowingDirectionWeight = centroidFollowingDirectionWeight,
+                    minCentroidDistance = minCentroidDistance,
+                    maxCentroidDistance = maxCentroidDistance,
+                    centroidFollowingDirections = centroidFollowingDirections,
+                    schoolID = schoolID,
+                };
+                var getCentroidFollowingDirectionJobHandle = getCentroidFollowingDirectionJob.ScheduleParallel(fishQuery, fishChunkBaseIndexJobHandle);
+
+                var getCouzinDirectionJob = new GetCouzinDirectionJob
+                {
+                    chunkBaseEntityIndices = fishChunkBaseEntityIndexArray,
+                    fishPositions = SystemAPI.GetComponentLookup<LocalToWorld>(true),
+                    fishEntities = fishEntities,
+                    fishCount = fishCount,
+                    couzinDirectionWeight = couzinDirectionWeight,
+                    alpha = alpha,
+                    rho = rho,
+                    couzinDirections = couzinDirections,
+                    schoolID = schoolID,
+                };
+                var getCouzinDirectionJobHandle = getCouzinDirectionJob.ScheduleParallel(fishQuery, fishChunkBaseIndexJobHandle);
+
+                var centroidsBarrierJobHandle = JobHandle.CombineDependencies(calculateCentroidMeanJobHandle, getCentroidFollowingDirectionJobHandle);
+                var centroidCouzinBarrierJobHandle = JobHandle.CombineDependencies(centroidsBarrierJobHandle,getCouzinDirectionJobHandle);
+                
+                
+                var assignFinalDirectionJob = new AssignFinalDirectionJob
+                {
+                    chunkBaseEntityIndices = fishChunkBaseEntityIndexArray,
+                    couzinDirectionWeight = couzinDirectionWeight,
+                    centroidFollowingDirectionWeight = centroidFollowingDirectionWeight,
+                    couzinDirections = couzinDirections,
+                    centroidFollowingDirections = centroidFollowingDirections,
+                    deltaTime = dt,
+                    rotationSpeed = rotationSpeed,
+                    schoolID = schoolID,
+                };
+                
+                var assignFinalDirectionJobHandle = assignFinalDirectionJob.ScheduleParallel(fishQuery, centroidCouzinBarrierJobHandle);
+
+                var assignCentroidJob = new AssignCentroidJob
+                {
+                    newCentroid = newCentroid,
+                    schoolID = schoolID,
+                };
+                var assignCentroidJobHandle = assignCentroidJob.ScheduleParallel(fishQuery, centroidsBarrierJobHandle);
+
+                var assignCentroidFinalDirectionBarrierJobHandle = JobHandle.CombineDependencies(assignCentroidJobHandle, assignFinalDirectionJobHandle);
+
+                state.Dependency = assignCentroidFinalDirectionBarrierJobHandle;
+
+                
+                // foreach(var x in newCentroid)
+                // {
+                //     Debug.Log(FixedString.Format("Centroid: ({0})", x.ToString()));
+                // }
+
+                fishQuery.AddDependency(state.Dependency);
+                fishQuery.ResetFilter();
+
+
+                //TODO :: define the calculate distnce from centroid job
+                    //Calculate distance from centroid, update the goToCentroid variable if need be and calculate direction towards centroid, put it in the centroidFollowingDirection array
+                //TODO :: define update Centroid Job
+                    //Calculate the new centroid
+                //TODO :: define the updateCentroid on each fish Job
+                    //Update this new centroid on each fish and calcuate the new direction for them
+            }
+            state.Dependency.Complete();
+            uniqueFishComponents.Dispose();
+        }
+        //TODO :: define calcuate distance from centroid job
+        //Calculate distance from centroid and update the goToCentroid variable if need be (Too close, just right or too far)
+        [BurstCompile]
+        partial struct GetCentroidFollowingDirectionJob : IJobEntity
+        {
+            [ReadOnly] public NativeArray<int> chunkBaseEntityIndices;
+            [ReadOnly] public float centroidFollowingDirectionWeight;
+            [ReadOnly] public int minCentroidDistance;
+            [ReadOnly] public int maxCentroidDistance;
+            [ReadOnly] public int schoolID;
+
+            [NativeDisableParallelForRestriction] public NativeArray<float3> centroidFollowingDirections;
+
+            //in LocalToWorld localToWorld :: Access the LocalToWorld component as a read only value
+            //ref Fish fish :: Access to the Fish component as read and write value
+            void Execute([ChunkIndexInQuery] int chunkIndexInQuery, [EntityIndexInChunk] int entityIndexInChunk, in LocalToWorld localToWorld, in DynamicSchool dynamicSchool, ref Fish fish)
+            {
+                int entityIndexInQuery = chunkBaseEntityIndices[chunkIndexInQuery] + entityIndexInChunk;
+                float3 position = localToWorld.Position;
+                float3 centroid = dynamicSchool.centroid;
+                bool goToCentroid = fish.goToCentroid; //Does this change the entity?
+                float3 centroidFollowingDirection = float3.zero;
+                
+                if (centroidFollowingDirectionWeight > 0)
+                {
+                    if (math.length(centroid - position) > maxCentroidDistance)
+                    {
+                        goToCentroid = true;
+                        centroidFollowingDirection = math.normalizesafe(centroid - position);
+                    }
+                    else if (goToCentroid && math.length(centroid - position) > minCentroidDistance)
+                    {
+                        centroidFollowingDirection = math.normalizesafe(centroid - position);
+                    }
+                    else
+                    {
+                        fish.goToCentroid = false;
+                    }
+                }
+                
+                /*
+                if (entityIndexInQuery == 0)
+                {
+                        Debug.LogFormat("Fish 1 -> goToCentroid:{0}, Position: {1}, CentroidFollowingDirection {2}", 
+                        fish.goToCentroid,
+                        position,
+                        centroidFollowingDirection);
+                }
+                */
+
+                centroidFollowingDirections[entityIndexInQuery] = centroidFollowingDirection;
+            }      
+        }
+        //TODO :: define seperation and allignment job
+        //  Calculate the vectors for the seperation and allignment job
+        [BurstCompile]
+        partial struct GetCouzinDirectionJob : IJobEntity
+        {
+            [ReadOnly] public NativeArray<int> chunkBaseEntityIndices;
+            [ReadOnly] public ComponentLookup<LocalToWorld> fishPositions;
+            [ReadOnly] public NativeArray<Entity> fishEntities;
+            [ReadOnly] public int fishCount;
+            [ReadOnly] public float couzinDirectionWeight;
+            [ReadOnly] public float alpha;
+            [ReadOnly] public float rho;
+            [ReadOnly] public int schoolID;
+
+            [NativeDisableParallelForRestriction] public NativeArray<CouzinValues> couzinDirections;
+            void Execute([ChunkIndexInQuery] int chunkIndexInQuery, [EntityIndexInChunk] int entityIndexInChunk, in LocalToWorld localToWorld)
+            {
+                int curFishIndex = chunkBaseEntityIndices[chunkIndexInQuery] + entityIndexInChunk;
+                int seperationCount = 0;
+                int allignmentCount = 0;
+                float3 position = localToWorld.Position;
+                float3 distance;
+                float3 v = float3.zero;
+                float3 seperation = float3.zero;
+                float3 allignment = float3.zero;
+
+                /*if (curFishIndex == 0)
+                    {
+                        Debug.LogFormat("Fish 1 -> Position: {0}", 
+                        fishPositions[fishEntities[0]].Position);
+                    }
+                else if (curFishIndex == 1)
+                {
+                        Debug.LogFormat("Fish 2 -> Position: {0}", 
+                        fishPositions[fishEntities[1]].Position);
+                }*/
+                
+                //seperation = couzinDirections[curFishIndex].Seperation;
+                //allignment = couzinDirections[curFishIndex].Allignment;
+
+                if (couzinDirectionWeight > 0)
+                {
+                    for (int i = 0; i < fishCount; i++)
+                    {
+                        //Debug.LogFormat("Amount of fish it checks in Couzin Function: {0}", fishCount);
+                        if (i != curFishIndex)
+                        {
+                            //Debug.LogFormat("currentFish: {0}, iteration: {1}", curFishIndex, i);
+
+                            distance = fishPositions[fishEntities[i]].Position - fishPositions[fishEntities[curFishIndex]].Position;
+                            if (math.length(distance) < alpha)
+                            {
+                                seperation += distance/math.length(distance);  
+                                seperationCount += 1;
+                            }
+                            else if (math.length(distance) < rho)
+                            {
+                                allignment += distance/math.length(distance);
+                                v += fishPositions[fishEntities[i]].Forward/math.length(fishPositions[fishEntities[i]].Forward);
+                                allignmentCount += 1;
+                            }
+                        }
+                    }
+                    
+                    /*if (curFishIndex == 0)
+                    {
+                        Debug.LogFormat("Fish 1 -> Position: {0},Seperation: {1}, Allignment: {2}", 
+                        fishPositions[fishEntities[0]].Position,
+                        seperation,
+                        allignment);
+                    }
+                    else if (curFishIndex == 1)
+                    {
+                        Debug.LogFormat("Fish 2 -> Position: {0},Seperation: {1}, Allignment: {2}", 
+                        fishPositions[fishEntities[1]].Position,
+                        seperation,
+                        allignment);
+                    }*/
+
+                    seperation = -seperation;
+                    allignment += v;
+
+                    if (seperationCount > 0)
+                    {
+                       seperation /= math.length(seperation);  
+                    }
+                    if (allignmentCount > 0)
+                    {
+                        allignment /= math.length(allignment);
+                    }
+
+                    /*
+                    if (curFishIndex == 0)
+                    {
+                        Debug.LogFormat("Fish 1 -> Seperation: {0}, Allignment: {1}", 
+                        seperation,
+                        allignment);
+                    }
+                    else if (curFishIndex == 1)
+                    {
+                        Debug.LogFormat("Fish 2 -> Seperation: {0}, Allignment: {1}", 
+                        seperation,
+                        allignment);
+                    }
+                    */
+
+                    couzinDirections[curFishIndex] = new CouzinValues
+                    {
+                        Seperation = seperation,
+                        Allignment = allignment,
+                    };
+                }
+            }
+        }
+
+        //TODO :: Define the Job to Calculate the new position of each fish
+        // Calculate the final direction for each fish and add to the new centroid calculation base on this
+        //TODO :: Maybe add delta time to calculating the new position
+        [BurstCompile]
+        partial struct AssignFinalDirectionJob : IJobEntity
+        {
+            [ReadOnly] public NativeArray<int> chunkBaseEntityIndices;
+            [ReadOnly] public float couzinDirectionWeight;
+            [ReadOnly] public float centroidFollowingDirectionWeight;
+            
+            [ReadOnly] public NativeArray<CouzinValues> couzinDirections;
+            [ReadOnly] public NativeArray<float3> centroidFollowingDirections;
+
+            [ReadOnly] public float deltaTime;
+            [ReadOnly] public float rotationSpeed;
+            [ReadOnly] public int schoolID;
+            
+
+            void Execute([ChunkIndexInQuery] int chunkIndexInQuery, [EntityIndexInChunk] int entityIndexInChunk,ref Fish fish, ref LocalToWorld localToWorld)
+            {
+                int curFishIndex = chunkBaseEntityIndices[chunkIndexInQuery] + entityIndexInChunk;
+                float3 curPosition = localToWorld.Position;
+                float3 forward = localToWorld.Forward;
+                float3 couzinDirection = float3.zero;
+                float3 preferredDirection;
+
+                
+                if (couzinDirections[curFishIndex].Seperation.Equals(float3.zero) != true)
+                {
+                    couzinDirection = couzinDirections[curFishIndex].Seperation;
+                }
+                else if (couzinDirections[curFishIndex].Allignment.Equals(float3.zero) != true)
+                {
+                    couzinDirection = couzinDirections[curFishIndex].Allignment;
+                }
+                
+
+                //couzinDirection = couzinDirections[curFishIndex].Seperation;
+
+                
+                preferredDirection = couzinDirection * couzinDirectionWeight
+                                            + centroidFollowingDirections[curFishIndex] * centroidFollowingDirectionWeight;
+                
+                //preferredDirection = couzinDirection * couzinDirectionWeight;
+                /*if (curFishIndex == 0)
+                {
+                    Debug.LogFormat("Fish 1 -> Seperation: {0}, Allignment: {1}, Final: {2}, CurDirection: {3}", 
+                    couzinDirections[curFishIndex].Seperation,
+                    couzinDirections[curFishIndex].Allignment,
+                    preferredDirection,
+                    localToWorld.Forward);
+                }
+                else if (curFishIndex == 1)
+                {
+                    Debug.LogFormat("Fish 2 -> Seperation: {0}, Allignment: {1}, Final: {2}, CurDirection: {3}", 
+                    couzinDirections[curFishIndex].Seperation,
+                    couzinDirections[curFishIndex].Allignment,
+                    preferredDirection,
+                    localToWorld.Forward);
+                }*/
+                /*if (curFishIndex == 0)
+                {
+                    Debug.LogFormat("Fish 1 -> Seperation: {0}, Allignment: {1}, CentroidFollowing: {2}, Final: {3}", 
+                    couzinDirections[curFishIndex].Seperation,
+                    couzinDirections[curFishIndex].Allignment,
+                    centroidFollowingDirections[curFishIndex],
+                    preferredDirection);
+                }
+                else if (curFishIndex == 1)
+                {
+                    Debug.LogFormat("Fish 2 -> Seperation: {0}, Allignment: {1}, CentroidFollowing: {2}, Final: {3}", 
+                    couzinDirections[curFishIndex].Seperation,
+                    couzinDirections[curFishIndex].Allignment,
+                    centroidFollowingDirections[curFishIndex],
+                    preferredDirection);
+                }*/
+                
+                //preferredDirection = centroidFollowingDirections[curFishIndex] * centroidFollowingDirectionWeight;
+                //preferredDirection = couzinDirection * couzinDirectionWeight; 
+                
+                //preferredDirection = couzinDirection * couzinDirectionWeight;
+                
+                //preferredDirection = centroidFollowingDirections[curFishIndex] * centroidFollowingDirectionWeight;
+                
+                if (preferredDirection.Equals(float3.zero))
+                {
+                    preferredDirection = localToWorld.Forward;
+                }
+                else
+                {
+                    preferredDirection /= math.length(preferredDirection);
+                }
+                
+                
+                //preferredDirection /= math.length(preferredDirection);
+                /*
+                // Actualizar la rapidez
+                currentSpeed = Mathf.Lerp(currentSpeed, speed, schoolController.acceleration * Time.deltaTime);
+
+                // Actualizar la rotacion
+                Vector3 delayDirection = Vector3.Lerp(transform.forward, direction, schoolController.rotationSpeed * Time.deltaTime);
+                transform.LookAt(transform.position + delayDirection);
+
+                // Calcula la nueva posicion
+                transform.position += currentSpeed * Time.deltaTime * transform.forward;
+                */
+                
+                //This doesn't count because the speed variable isnt being calculated because there isn't anything that affects it yet (predators, obstacles, etc...)
+                //fish.currentSpeed = Mathf.Lerp(fish.currentSpeed, speed, 1f * deltaTime);
+
+                //float3 delayDirection = math.lerp(forward, preferredDirection,rotationSpeed * deltaTime);
+                float3 delayDirection = math.lerp(forward, preferredDirection, rotationSpeed * deltaTime);
+
+                localToWorld = new LocalToWorld
+                {
+                    Value = float4x4.TRS(
+                        // TODO: precalc speed*dt
+                        new float3(curPosition += new float3(fish.currentSpeed) * forward),
+                        //new float3(curPosition += new float3(0.1) * forward),
+                        //new float3(curPosition),
+                        quaternion.LookRotationSafe(math.normalizesafe(forward + (delayDirection - forward)), math.up()),
+                        new float3(1.0f, 1.0f, 1.0f))
+                };
+            }
+        }
+        //TODO :: Calculate new centroid job (not parallel but do it at the start with the first two jobs)
+        //  Remember to do centroid/fishCount after finishing this job
+        [BurstCompile]
+        partial struct CalculateCentroidJob : IJobEntity
+        {
+            public NativeArray<float3> newCentroid;
+            [ReadOnly] public int schoolID;
+            public NativeArray<int> fishCountPerSchool;
+            
+
+            void Execute(in LocalToWorld localToWorld)
+            {
+                //Debug.Log(newCentroid[0] + localToWorld.Position);
+                newCentroid[schoolID] = newCentroid[schoolID] + localToWorld.Position;
+                fishCountPerSchool[schoolID]++;
+                //Debug.LogFormat("newCentroid: {0}", newCentroid[0]);
+            }
+        }
+
+        [BurstCompile]
+        partial struct CalculateCentroidMeanJob : IJobEntity
+        {
+            public NativeArray<float3> newCentroid;
+            [ReadOnly] public int fishCount;
+            [ReadOnly] public int schoolID;
+            [ReadOnly] public NativeArray<int> fishCountPerSchool;
+            public float3 schoolCentroid;
+
+            void Execute ()
+            {
+                //Debug.Log("newCentroid: " + newCentroid[0]);
+                //Debug.LogFormat("newCentroid: {0}, fishCount: {1}", newCentroid[0], fishCount);
+                //Debug.Log(FixedString.Format("fishCountPerSchool {1}: {0}", fishCountPerSchool[schoolID], schoolID));
+                newCentroid[schoolID] = newCentroid[schoolID]/(float) fishCountPerSchool[schoolID];
+                //Debug.Log(FixedString.Format("newCentroid: {0}", newCentroid[schoolID].x));
+                schoolCentroid = newCentroid[schoolID];
+            }
+        }
+        //TODO :: Put new Centroid Job
+        [BurstCompile]
+        partial struct AssignCentroidJob : IJobEntity
+        {
+            [ReadOnly] public NativeArray<float3> newCentroid;
+            [ReadOnly] public int schoolID;
+
+            void Execute(ref DynamicSchool dynamicSchool)
+            {
+                dynamicSchool.centroid = newCentroid[schoolID];
+            }
+        }
+
+        struct CouzinValues
+        {
+            public float3 Seperation;
+            public float3 Allignment;
+        }
+    }
+}

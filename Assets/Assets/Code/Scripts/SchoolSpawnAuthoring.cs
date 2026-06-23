@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.Design;
 using Unity.Entities;
 using Unity.Transforms;
 using UnityEngine;
@@ -28,6 +29,11 @@ namespace DCR2
         [Header("Fake Gizmo: Show centroid")]
         public GameObject spherePrefab;
         public int showCentroid;*/
+
+        // void Awake()
+        // {
+        //     Debug.Log("Active GPU:" + SystemInfo.graphicsDeviceName);
+        // }
 
         class Baker : Baker<SchoolSpawnAuthoring>
         {
