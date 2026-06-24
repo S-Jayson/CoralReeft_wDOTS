@@ -108,15 +108,9 @@ MonoBehaviour:
   normalSpeed: 0.09
   acceleration: 1
 <<<<<<< HEAD
-<<<<<<< HEAD
   rotationSpeed: 3.2
   couzinDirectionWeight: 1
   centroidFollowingDirectionWeight: 4
-=======
-  rotationSpeed: 1
-  couzinDirectionWeight: 4
-  centroidFollowingDirectionWeight: 1
->>>>>>> parent of db3bf74 (importing scripts)
 =======
   rotationSpeed: 1
   couzinDirectionWeight: 4

@@ -14,13 +14,8 @@ Material:
   m_ValidKeywords: []
   m_InvalidKeywords: []
 <<<<<<< HEAD
-<<<<<<< HEAD
   m_LightmapFlags: 0
   m_EnableInstancingVariants: 1
-=======
-  m_LightmapFlags: 2
-  m_EnableInstancingVariants: 0
->>>>>>> parent of db3bf74 (importing scripts)
 =======
   m_LightmapFlags: 2
   m_EnableInstancingVariants: 0

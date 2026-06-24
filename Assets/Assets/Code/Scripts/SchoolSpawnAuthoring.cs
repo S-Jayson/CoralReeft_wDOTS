@@ -32,11 +32,8 @@ namespace DCR2
         // public int showCentroid;
 
 <<<<<<< HEAD
-<<<<<<< HEAD
         
 
-=======
->>>>>>> parent of db3bf74 (importing scripts)
 =======
 >>>>>>> parent of db3bf74 (importing scripts)
         class Baker : Baker<SchoolSpawnAuthoring>
