@@ -31,11 +31,8 @@ namespace DCR2
         // public GameObject spherePrefab;
         // public int showCentroid;
 
-<<<<<<< HEAD
         
 
-=======
->>>>>>> parent of db3bf74 (importing scripts)
         class Baker : Baker<SchoolSpawnAuthoring>
         {
             // Function to bake the entity that contains the BoidSchool component
