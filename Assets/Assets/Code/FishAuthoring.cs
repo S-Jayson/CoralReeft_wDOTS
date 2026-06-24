@@ -3,7 +3,6 @@ using Unity.Entities;
 using Unity.Transforms;
 using UnityEngine;
 
-
 namespace DCR2
 {
     public class FishAuthoring : MonoBehaviour
@@ -34,7 +33,7 @@ namespace DCR2
             // authoring :: This is the value that has the inputs that the user gave 
             public override void Bake(FishAuthoring authoring)
             {
-                var entity = GetEntity(TransformUsageFlags.Dynamic);
+                var entity = GetEntity(TransformUsageFlags.Renderable);
                 
                 //Adds the SemiStaticSchool component to this entity
                 AddSharedComponent(entity, new SemiStaticSchool
@@ -54,7 +53,8 @@ namespace DCR2
                 //Adds the DynamicSchool component to this entity
                 AddComponent(entity, new DynamicSchool
                 {
-                    centroid = authoring.transform.position
+                    centroid = authoring.transform.position,
+                    
                 });
 
                 //Adds the Fish component to this entity
@@ -75,7 +75,7 @@ namespace DCR2
     [WriteGroup(typeof(LocalToWorld))]
     public struct SemiStaticSchool : ISharedComponentData
     {
-        public int schoolID;
+        public int schoolID; // considerar posible static en el futuro
         public float couzinDirectionWeight;
         public float centroidFollowingDirectionWeight;
         public int minCentroidDistance;
@@ -93,6 +93,7 @@ namespace DCR2
     public struct DynamicSchool : IComponentData
     {
         public Vector3 centroid;
+        public Vector3 schoolCentroid;
 
     }
 
@@ -103,3 +104,4 @@ namespace DCR2
         public bool goToCentroid;
     }
 }
+

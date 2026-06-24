@@ -7,19 +7,16 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine.Profiling;
 
-//These are used to enable test things like Debug.Log()
 using UnityEngine;
 using Unity.Rendering;
 
-//Summary :: Once the SchoolSpawner controller entity updates, it spawns its corresponding fish,
-//  afterwards, this entity is deleted so that it doesn't spawn again
 namespace DCR2
 {
     // RequireMatcingQueriesForUpdates :: Skips the OnUpdate system if there are no entities found in the EntityQueries that you do
     //  Basically, this doens't run OnUpdate until there are entities that match the quesries done in this system (Until we've defined our entity spawner)
     [RequireMatchingQueriesForUpdate]
     [BurstCompile]
-    public partial struct SchoolSpawnSystem : ISystem
+    public partial struct TestSchoolSpawnSystem : ISystem
     {
         public void OnUpdate(ref SystemState state)
         {
@@ -27,25 +24,17 @@ namespace DCR2
             //  The problem with doing these types of command in a for loop is that these commands can affect the structure of the list we're iterating, if we change it while iterating we might get some bugs
             //  Or it might take longer to do than doing it after the for loop is done.
             //Allocator.Temp: Memory is allocated to this value for a temporary amount of time, around 4 frames of time.
-            //world :: This is the scene that we're accessing with all its entities(?)
-            //  Unmanaged :: Unmanaged components are the ones that are used most of the time
-            //         unike managed components, unmanaged components can be used for  brst compoiling and for jobs
-            //testSpawnComponents :: This has the required elements for looking up the values of component of a specific type on an entity
+
             var localToWorldLookup = SystemAPI.GetComponentLookup<LocalToWorld>();
             var ecb = new EntityCommandBuffer(Allocator.Temp);
             var world = state.World.Unmanaged;
             var testSpawnComponents = SystemAPI.GetComponentLookup<TestSpawn>();
 
-            var centroidSpawnComponents = SystemAPI.GetComponentLookup<centroidGizmo>();
-
-            //Testing
-            //var gizmoComponents = SystemAPI.GetComponentLookup<Gizmo>();
-
             //RefRO: Read only these components
             //.WithEntityAccess(): Give direct access to these entities
             //Searches for the all the entities that contain the BoidSchool and LocalToWorld Components, and also returns the entity ID fo each one 
-            foreach (var (school, schoolLocalToWorld, entity) in
-                     SystemAPI.Query<RefRW<SchoolSpawn>, RefRO<LocalToWorld>>()
+            foreach (var (school, schoolLocalToWorld, testSpawn, entity) in
+                     SystemAPI.Query<RefRW<SchoolSpawn>, RefRO<LocalToWorld>, RefRO<TestSpawn>>()
                          .WithEntityAccess())
             {
                 /*NativeArray<ComponentType> componentTypes = state.EntityManager.GetComponentTypes(school.ValueRO.schoolPrefab, Allocator.Temp);
@@ -59,22 +48,12 @@ namespace DCR2
                     }
                 }*/
                 //List<ComponentType> componentTypes = EntityManager.GetComponentTypes(school.ValueRO.schoolPrefab, RewindableAllocator);
-                //Checks 
-                if (testSpawnComponents.HasComponent(entity))
-                {
-                    Debug.Log("Test Spawn");
-                    return;
-                }
                 if (entity.Index == 204)
                 {
                     //Debug.Log("Getting out of loop");
                     ecb.DestroyEntity(entity);
                     return;
                 }
-                Debug.Log("Normal Spawn");
-                // Debug.Log("Active GPU:" + SystemInfo.graphicsDeviceName);
-                
-                
 
                 float4x4 matrix = schoolLocalToWorld.ValueRO.Value;
                 float3 translation = matrix.c3.xyz;
@@ -90,17 +69,6 @@ namespace DCR2
                     scale,
                     school.ValueRO.schoolPrefab);
                 */
-
-                var centroidQuery = SystemAPI.QueryBuilder().WithAll<centroidGizmo>().WithAll<LocalToWorld>().Build();
-                if (centroidQuery.CalculateEntityCount() > 0)
-                {
-                    Debug.Log("Instantiate Gizmo");
-                    NativeArray<Entity> centroidEntityArray = centroidQuery.ToEntityArray(Allocator.TempJob);
-
-                    state.EntityManager.Instantiate(centroidSpawnComponents[centroidEntityArray[0]].centroidPrefab);
-                    Debug.Log("Instantiate Gizmo2");
-                }
-                
                 //CreateNativeArray<T>(NativeArray<T> array, AllocatorManager.AllocatorHandle allocator)
                 //  This creates a copy of the other native array with the allocator
                 //  so it returns a List of the amount of individuals for each school
@@ -108,7 +76,6 @@ namespace DCR2
                 //          world.UpdateAllocator: Do not need to be explicitly disposed, all alocations made here last around two full world updates
                 //Rewindable Allocator :: dynamic memory, doubles block of memory it can use 
                 //Define boidsEntities as an array with boidSchool.ValueRO.Count amount of spaces in the array, right now its an empty array.
-
                 var schoolEntities =
                     CollectionHelper.CreateNativeArray<Entity, RewindableAllocator>(school.ValueRO.spawnCount,
                         ref world.UpdateAllocator);
@@ -119,12 +86,17 @@ namespace DCR2
 
                 // Instantiate the SetBoidLocalToWorld job
                 //  This job moves the fish entities in boidEntities into random positions
-                var SetSchoolLocalToWorldJob = new SetSchoolLocalToWorld
+                var TestSetSchoolLocalToWorldJob = new TestSetSchoolLocalToWorld
                 {
                     LocalToWorldFromEntity = localToWorldLookup,
                     Entities = schoolEntities,
                     Center = schoolLocalToWorld.ValueRO.Position,
-                    Radius = school.ValueRO.spawnRadius
+                    Radius = school.ValueRO.spawnRadius,
+                    spawnType = testSpawn.ValueRO.spawnType,
+                    minMagnitude = testSpawn.ValueRO.minMagnitude,
+                    maxMagnitude = testSpawn.ValueRO.maxMagnitude,
+                    forwardDis = testSpawn.ValueRO.forwardDis,
+                    horizontalDis = testSpawn.ValueRO.horizontalDis,
                 };
 
                 //Schuedule:: Schedule job
@@ -135,7 +107,7 @@ namespace DCR2
                 
                 //Debug.LogFormat("School spawn count: {0}", school.ValueRO.spawnCount);
                 
-                state.Dependency = SetSchoolLocalToWorldJob.Schedule(school.ValueRO.spawnCount, 64, state.Dependency);
+                state.Dependency = TestSetSchoolLocalToWorldJob.Schedule(school.ValueRO.spawnCount, 64, state.Dependency);
                 
                 //state.Dependency.Complete() :: waits for all jobs to complete in order to go to th next line
                 state.Dependency.Complete();
@@ -150,7 +122,7 @@ namespace DCR2
     }
     
     [BurstCompile]
-    struct SetSchoolLocalToWorld : IJobParallelFor
+    struct TestSetSchoolLocalToWorld : IJobParallelFor
     {
         //[NativeDisableContainerSafetyRestriction] :: This disables safety checks on the system, gives you errors if it finds some
         // If the game has an error the game just crashes
@@ -166,6 +138,11 @@ namespace DCR2
         public NativeArray<Entity> Entities;
         public float3 Center;
         public float Radius;
+        public int spawnType;
+        public int minMagnitude;
+        public int maxMagnitude;
+        public int forwardDis;
+        public int horizontalDis;
 
         // Execute :: Built in function for jobs which is looped for each value in the school List
         public void Execute(int i)
@@ -176,24 +153,39 @@ namespace DCR2
             // pos :: create a random position
             // localToWorld :: Define the position and direction into the world coordinates
             // Define the random position and direction of each fish spawned beforehand. 
+
+            float3 dir = new float3(0);
+            float3 pos = new float3(0);
             var entity = Entities[i];
             var random = new Unity.Mathematics.Random(((uint)(entity.Index + i + 1) * 0x9F6ABC1));
-            var randDir = math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
-            var randPos = Radius * math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
-            var pos = Center + (randDir * randPos);
 
-
-            // Read the existing baked matrix to extract its scale
-            float4x4 existing = LocalToWorldFromEntity[entity].Value;
-            float3 bakedScale = new float3(
-                math.length(existing.c0.xyz),
-                math.length(existing.c1.xyz),
-                math.length(existing.c2.xyz));
-
-
+            //SpawnType == 1 :: Random spawn with magnitude
+            //This type of spawn puts every fish in a random position and then puts them farther away with a random magnitude
+            if (spawnType == 1)
+            {
+                dir = math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
+                var randPos = Radius * math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
+                var randDist = random.NextFloat3(minMagnitude, maxMagnitude);
+                pos = Center + (dir * randPos * randDist);
+            }
+            //SpawnType == 2 :: Vertical line spawn
+            //Spawn the fish in a vertical line, where each fish has a specific distance between them
+            else if (spawnType == 2)
+            {
+                dir = math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
+                pos = Center + new float3(0f, 0f, ((forwardDis/2 + math.floor(i/2))*forwardDis) * math.pow(-1,i));
+            }
+            //TODO :: Find out why it doesnt work as expected
+            //SpawnType == 3 :: Two vertical line spawn
+            //Spawn two vertical lines of fish
+            else if (spawnType == 3)
+            {
+                dir = math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
+                pos = Center + new float3(horizontalDis/2 * math.pow(-1, math.floor(i/2)), 0f, (forwardDis/2 + (math.floor(i/2))*forwardDis) * math.pow(-1,i));
+            }
             var localToWorld = new LocalToWorld
             {
-                Value = float4x4.TRS(pos, quaternion.LookRotationSafe(randDir, math.up()), bakedScale)
+                Value = float4x4.TRS(pos, quaternion.LookRotationSafe(dir, math.up()), new float3(1.0f, 1.0f, 1.0f))
             };
             LocalToWorldFromEntity[entity] = localToWorld;
         }

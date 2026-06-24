@@ -72,7 +72,6 @@ namespace DCR2
                     return;
                 }
                 Debug.Log("Normal Spawn");
-                // Debug.Log("Active GPU:" + SystemInfo.graphicsDeviceName);
                 
                 
 
@@ -124,7 +123,8 @@ namespace DCR2
                     LocalToWorldFromEntity = localToWorldLookup,
                     Entities = schoolEntities,
                     Center = schoolLocalToWorld.ValueRO.Position,
-                    Radius = school.ValueRO.spawnRadius
+                    Radius = school.ValueRO.spawnRadius,
+                   // CentroidVector = 0
                 };
 
                 //Schuedule:: Schedule job
@@ -166,6 +166,8 @@ namespace DCR2
         public NativeArray<Entity> Entities;
         public float3 Center;
         public float Radius;
+        
+        
 
         // Execute :: Built in function for jobs which is looped for each value in the school List
         public void Execute(int i)
@@ -181,22 +183,14 @@ namespace DCR2
             var randDir = math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
             var randPos = Radius * math.normalizesafe(random.NextFloat3() - new float3(0.5f, 0.5f, 0.5f));
             var pos = Center + (randDir * randPos);
-
-
-            // Read the existing baked matrix to extract its scale
-            float4x4 existing = LocalToWorldFromEntity[entity].Value;
-            float3 bakedScale = new float3(
-                math.length(existing.c0.xyz),
-                math.length(existing.c1.xyz),
-                math.length(existing.c2.xyz));
-
-
             var localToWorld = new LocalToWorld
             {
-                Value = float4x4.TRS(pos, quaternion.LookRotationSafe(randDir, math.up()), bakedScale)
+                Value = float4x4.TRS(pos, quaternion.LookRotationSafe(randDir, math.up()), new float3(1.0f, 1.0f, 1.0f))
             };
             LocalToWorldFromEntity[entity] = localToWorld;
+            //CentroidVector += localToWorld.Position;
         }
+        
     }
 }
 

@@ -9,7 +9,7 @@ namespace DCR2
     {
         public GameObject centroidPrefab;
         public int showCentroid;
-
+        public int centroidID;
         class Baker : Baker<GizmoAuthoring>
         {
             // Function to bake the entity that contains the BoidSchool component
@@ -40,6 +40,7 @@ namespace DCR2
     public struct centroidGizmo : IComponentData
     {
         public Entity centroidPrefab;
+        public int centroidID;
     }
 }
 

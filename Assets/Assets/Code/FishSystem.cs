@@ -24,18 +24,43 @@ namespace DCR2
 
     public partial struct FishSystem : ISystem
     {
+        // vars
+        EntityQuery schoolQuery;
+        int schoolCount;
+        NativeArray<Entity> schoolArray;
+        // public bool schoolInstatiated = false;
+        
+        
         [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            //schoolQuery = SystemAPI.QueryBuilder().WithAll<SchoolSpawn>().Build();
+            schoolCount = 0;
+        }
+
         public void OnUpdate(ref SystemState state)
         {
             //Note:: I was having a problem where the GetAllUniqueComponents function was telling me that it didnt find any entities with SemiStaticSchool component and that I couoldnt fiter with multiple shared components, which no longer appeared when I added the SemiStaticSchool component in the EntityQuery, but I'm not sure why that happened...
             var fishQuery = SystemAPI.QueryBuilder().WithAll<SemiStaticSchool>().WithAll<Fish>().WithAll<DynamicSchool>().WithAllRW<LocalToWorld>().Build();
-            var world = state.WorldUnmanaged;
             float dt = math.min(0.05f, SystemAPI.Time.DeltaTime);
+            //Debug.Log(FixedString.Format("Fish count: {0}", fishQuery.CalculateEntityCount()));
+            var world = state.WorldUnmanaged;
+
+            // creating query of schools to use for array of centroids
+            if (schoolCount == 0)
+            {
+                schoolQuery = SystemAPI.QueryBuilder().WithAll<SchoolSpawn>().Build();
+                schoolCount = schoolQuery.CalculateEntityCount();
+                schoolArray = schoolQuery.ToEntityArray(Allocator.Temp);
+            }
+            
+
             
             state.EntityManager.GetAllUniqueSharedComponents(out NativeList<SemiStaticSchool> uniqueFishComponents, world.UpdateAllocator.ToAllocator);
             foreach (var fishSettings in uniqueFishComponents)
             {
                 fishQuery.AddSharedComponentFilter(fishSettings);
+                
 
                 var fishCount = fishQuery.CalculateEntityCount();
                 //Default value in shared component filter
@@ -59,6 +84,8 @@ namespace DCR2
                 float normalSpeed = fishSettings.normalSpeed;
                 float acceleration = fishSettings.acceleration;
                 float rotationSpeed = fishSettings.rotationSpeed;
+                int schoolID = fishSettings.schoolID;
+
 
                 //Create an array that contains each entity in this school
                 NativeArray<Entity> fishEntities = fishQuery.ToEntityArray(Allocator.TempJob); 
@@ -70,14 +97,30 @@ namespace DCR2
                 //Create arrays where you're going to store the results from jobs
                 var couzinDirections = CollectionHelper.CreateNativeArray<CouzinValues, RewindableAllocator>(fishCount, ref world.UpdateAllocator);
                 var centroidFollowingDirections = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(fishCount, ref world.UpdateAllocator);
-                var newCentroid = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(1, ref world.UpdateAllocator);
-                newCentroid[0] = float3.zero;
-                //float3 newCentroid = float3.zero;
+                //var newCentroid = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(1, ref world.UpdateAllocator);
+                //newCentroid[0] = float3.zero;
+                //float3 newCentroid = float3.zero;\\
+                
+                // array to keep count of how many fish are in each school
+                var fishCountPerSchool = CollectionHelper.CreateNativeArray<int, RewindableAllocator>(schoolCount, ref world.UpdateAllocator);
+                // creating array of centroids
+                var newCentroid = CollectionHelper.CreateNativeArray<float3, RewindableAllocator>(schoolCount, ref world.UpdateAllocator);
+                for (int i = 0; i < schoolCount; i++)
+                {
+                    // initialize each centroid to 0 (and each schoolCount to 0 also, to reuse the same loop)
+                    newCentroid[i] = float3.zero;
+                    fishCountPerSchool[i] = 0;
+                }
+                
 
+                
                 //Is it alright to name the variables same?
                 var calculateCentroidJob = new CalculateCentroidJob
                 {
                     newCentroid = newCentroid,
+                    schoolID = schoolID,
+                    fishCountPerSchool = fishCountPerSchool,
+                    
                 };
                 var calculateCentroidJobHandle = calculateCentroidJob.Schedule(fishQuery, fishChunkBaseIndexJobHandle);
 
@@ -85,6 +128,8 @@ namespace DCR2
                 {
                     newCentroid = newCentroid,
                     fishCount = fishCount,
+                    schoolID = schoolID,
+                    fishCountPerSchool = fishCountPerSchool,
                 };
                 var calculateCentroidMeanJobHandle = calculateCentroidMeanJob.Schedule(calculateCentroidJobHandle);
 
@@ -95,6 +140,7 @@ namespace DCR2
                     minCentroidDistance = minCentroidDistance,
                     maxCentroidDistance = maxCentroidDistance,
                     centroidFollowingDirections = centroidFollowingDirections,
+                    schoolID = schoolID,
                 };
                 var getCentroidFollowingDirectionJobHandle = getCentroidFollowingDirectionJob.ScheduleParallel(fishQuery, fishChunkBaseIndexJobHandle);
 
@@ -108,6 +154,7 @@ namespace DCR2
                     alpha = alpha,
                     rho = rho,
                     couzinDirections = couzinDirections,
+                    schoolID = schoolID,
                 };
                 var getCouzinDirectionJobHandle = getCouzinDirectionJob.ScheduleParallel(fishQuery, fishChunkBaseIndexJobHandle);
 
@@ -124,6 +171,7 @@ namespace DCR2
                     centroidFollowingDirections = centroidFollowingDirections,
                     deltaTime = dt,
                     rotationSpeed = rotationSpeed,
+                    schoolID = schoolID,
                 };
                 
                 var assignFinalDirectionJobHandle = assignFinalDirectionJob.ScheduleParallel(fishQuery, centroidCouzinBarrierJobHandle);
@@ -131,6 +179,7 @@ namespace DCR2
                 var assignCentroidJob = new AssignCentroidJob
                 {
                     newCentroid = newCentroid,
+                    schoolID = schoolID,
                 };
                 var assignCentroidJobHandle = assignCentroidJob.ScheduleParallel(fishQuery, centroidsBarrierJobHandle);
 
@@ -138,8 +187,15 @@ namespace DCR2
 
                 state.Dependency = assignCentroidFinalDirectionBarrierJobHandle;
 
+                
+                // foreach(var x in newCentroid)
+                // {
+                //     Debug.Log(FixedString.Format("Centroid: ({0})", x.ToString()));
+                // }
+
                 fishQuery.AddDependency(state.Dependency);
                 fishQuery.ResetFilter();
+
 
                 //TODO :: define the calculate distnce from centroid job
                     //Calculate distance from centroid, update the goToCentroid variable if need be and calculate direction towards centroid, put it in the centroidFollowingDirection array
@@ -160,6 +216,7 @@ namespace DCR2
             [ReadOnly] public float centroidFollowingDirectionWeight;
             [ReadOnly] public int minCentroidDistance;
             [ReadOnly] public int maxCentroidDistance;
+            [ReadOnly] public int schoolID;
 
             [NativeDisableParallelForRestriction] public NativeArray<float3> centroidFollowingDirections;
 
@@ -215,6 +272,7 @@ namespace DCR2
             [ReadOnly] public float couzinDirectionWeight;
             [ReadOnly] public float alpha;
             [ReadOnly] public float rho;
+            [ReadOnly] public int schoolID;
 
             [NativeDisableParallelForRestriction] public NativeArray<CouzinValues> couzinDirections;
             void Execute([ChunkIndexInQuery] int chunkIndexInQuery, [EntityIndexInChunk] int entityIndexInChunk, in LocalToWorld localToWorld)
@@ -246,7 +304,6 @@ namespace DCR2
                 {
                     for (int i = 0; i < fishCount; i++)
                     {
-
                         //Debug.LogFormat("Amount of fish it checks in Couzin Function: {0}", fishCount);
                         if (i != curFishIndex)
                         {
@@ -333,28 +390,14 @@ namespace DCR2
 
             [ReadOnly] public float deltaTime;
             [ReadOnly] public float rotationSpeed;
+            [ReadOnly] public int schoolID;
             
 
             void Execute([ChunkIndexInQuery] int chunkIndexInQuery, [EntityIndexInChunk] int entityIndexInChunk,ref Fish fish, ref LocalToWorld localToWorld)
             {
                 int curFishIndex = chunkBaseEntityIndices[chunkIndexInQuery] + entityIndexInChunk;
-
-                
-                //read position
                 float3 curPosition = localToWorld.Position;
-
-                //clean forward unaffected by scale
-                float3 forward = math.normalizesafe(localToWorld.Value.c2.xyz);
-
-
-                // Extract baked scale once
-                float4x4 existing = localToWorld.Value;
-                float3 bakedScale = new float3(
-                    math.length(existing.c0.xyz),
-                    math.length(existing.c1.xyz),
-                    math.length(existing.c2.xyz));
-
-
+                float3 forward = localToWorld.Forward;
                 float3 couzinDirection = float3.zero;
                 float3 preferredDirection;
 
@@ -366,7 +409,6 @@ namespace DCR2
                 else if (couzinDirections[curFishIndex].Allignment.Equals(float3.zero) != true)
                 {
                     couzinDirection = couzinDirections[curFishIndex].Allignment;
-                    Debug.Log("The rho is: {rho}");
                 }
                 
 
@@ -419,11 +461,11 @@ namespace DCR2
                 
                 if (preferredDirection.Equals(float3.zero))
                 {
-                    preferredDirection = forward;
+                    preferredDirection = localToWorld.Forward;
                 }
                 else
                 {
-                    preferredDirection = math.normalizesafe(preferredDirection);
+                    preferredDirection /= math.length(preferredDirection);
                 }
                 
                 
@@ -444,18 +486,17 @@ namespace DCR2
                 //fish.currentSpeed = Mathf.Lerp(fish.currentSpeed, speed, 1f * deltaTime);
 
                 //float3 delayDirection = math.lerp(forward, preferredDirection,rotationSpeed * deltaTime);
-                float3 delayDirection = math.lerp(forward, preferredDirection,rotationSpeed * deltaTime);
-                delayDirection = math.normalizesafe(delayDirection);
-
-                // New position: clean unit forward, scaled by speed
-                float3 newPosition = curPosition + fish.currentSpeed * forward;
+                float3 delayDirection = math.lerp(forward, preferredDirection, rotationSpeed * deltaTime);
 
                 localToWorld = new LocalToWorld
                 {
                     Value = float4x4.TRS(
-                        newPosition,
-                        quaternion.LookRotationSafe(delayDirection, math.up()),
-                        bakedScale)
+                        // TODO: precalc speed*dt
+                        new float3(curPosition += new float3(fish.currentSpeed) * forward),
+                        //new float3(curPosition += new float3(0.1) * forward),
+                        //new float3(curPosition),
+                        quaternion.LookRotationSafe(math.normalizesafe(forward + (delayDirection - forward)), math.up()),
+                        new float3(1.0f, 1.0f, 1.0f))
                 };
             }
         }
@@ -465,10 +506,15 @@ namespace DCR2
         partial struct CalculateCentroidJob : IJobEntity
         {
             public NativeArray<float3> newCentroid;
+            [ReadOnly] public int schoolID;
+            public NativeArray<int> fishCountPerSchool;
+            
 
             void Execute(in LocalToWorld localToWorld)
             {
-                newCentroid[0] = newCentroid[0] + localToWorld.Position;
+                //Debug.Log(newCentroid[0] + localToWorld.Position);
+                newCentroid[schoolID] = newCentroid[schoolID] + localToWorld.Position;
+                fishCountPerSchool[schoolID]++;
                 //Debug.LogFormat("newCentroid: {0}", newCentroid[0]);
             }
         }
@@ -478,13 +524,18 @@ namespace DCR2
         {
             public NativeArray<float3> newCentroid;
             [ReadOnly] public int fishCount;
+            [ReadOnly] public int schoolID;
+            [ReadOnly] public NativeArray<int> fishCountPerSchool;
+            public float3 schoolCentroid;
 
             void Execute ()
             {
                 //Debug.Log("newCentroid: " + newCentroid[0]);
                 //Debug.LogFormat("newCentroid: {0}, fishCount: {1}", newCentroid[0], fishCount);
-                newCentroid[0] = newCentroid[0]/(float) fishCount;
-                //Debug.LogFormat("newCentroid: {0}", newCentroid[0]);
+                //Debug.Log(FixedString.Format("fishCountPerSchool {1}: {0}", fishCountPerSchool[schoolID], schoolID));
+                newCentroid[schoolID] = newCentroid[schoolID]/(float) fishCountPerSchool[schoolID];
+                //Debug.Log(FixedString.Format("newCentroid: {0}", newCentroid[schoolID].x));
+                schoolCentroid = newCentroid[schoolID];
             }
         }
         //TODO :: Put new Centroid Job
@@ -492,10 +543,11 @@ namespace DCR2
         partial struct AssignCentroidJob : IJobEntity
         {
             [ReadOnly] public NativeArray<float3> newCentroid;
+            [ReadOnly] public int schoolID;
 
             void Execute(ref DynamicSchool dynamicSchool)
             {
-                dynamicSchool.centroid = newCentroid[0];
+                dynamicSchool.centroid = newCentroid[schoolID];
             }
         }
 
