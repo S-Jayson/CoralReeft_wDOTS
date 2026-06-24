@@ -246,6 +246,7 @@ namespace DCR2
                 {
                     for (int i = 0; i < fishCount; i++)
                     {
+                        //Debug.Log("The rho is: {rho}");
 
                         //Debug.LogFormat("Amount of fish it checks in Couzin Function: {0}", fishCount);
                         if (i != curFishIndex)

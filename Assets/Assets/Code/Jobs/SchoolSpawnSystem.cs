@@ -72,7 +72,6 @@ namespace DCR2
                     return;
                 }
                 Debug.Log("Normal Spawn");
-                // Debug.Log("Active GPU:" + SystemInfo.graphicsDeviceName);
                 
                 
 
