@@ -305,7 +305,10 @@ namespace DCR2
                     for (int i = 0; i < fishCount; i++)
                     {
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> parent of db3bf74 (importing scripts)
                         //Debug.Log("The rho is: {rho}");
 
 >>>>>>> parent of db3bf74 (importing scripts)
