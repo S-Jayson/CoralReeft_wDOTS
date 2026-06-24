@@ -160,11 +160,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 336408054}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 19726d5bfba60bc4cbbb464f350d21b3, type: 3}
+  m_Script: {fileID: 11500000, guid: 24824882563b0124aa382259ee4bbe9a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DCR2.GizmoAuthoring
   centroidPrefab: {fileID: 3149993061598082232, guid: 7befb7693d941ba48b6aeb6d123a6d89, type: 3}
   showCentroid: 1
+  centroidID: 0
 --- !u!1 &822858554
 GameObject:
   m_ObjectHideFlags: 0
@@ -239,12 +240,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 2071311524}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2cca9b2673c89944b83ae336ebf4526f, type: 3}
+  m_Script: {fileID: 11500000, guid: 867cd2f85fc6e59429d575df77b12c0f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DCR2.SchoolSpawnAuthoring
   schoolPrefab: {fileID: 8982848056286234505, guid: 148dd58ad65c381479df03d99e96a9ff, type: 3}
-  spawnRadius: 10
-  spawnCount: 2500
+  spawnRadius: 1
+  spawnCount: 3
+  schoolID: 0
+  schoolCentroid: {fileID: 336408054}
   spawnType: 0
   minMagnitude: 3
   maxMagnitude: 5
